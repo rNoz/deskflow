@@ -79,6 +79,7 @@ ArchSocket ArchNetworkBSD::newSocket(AddressFamily family, SocketType type)
   }
   try {
     setBlockingOnSocket(fd, false);
+    setCloseOnExecOnSocket(fd);
 #if defined(__APPLE__)
     int on = 1;
     setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &on, sizeof(on));
@@ -200,6 +201,7 @@ ArchSocket ArchNetworkBSD::acceptSocket(ArchSocket s, ArchNetAddress *addr)
 
   try {
     setBlockingOnSocket(fd, false);
+    setCloseOnExecOnSocket(fd);
 #if defined(__APPLE__)
     int on = 1;
     setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &on, sizeof(on));
@@ -395,6 +397,22 @@ void ArchNetworkBSD::setBlockingOnSocket(int fd, bool blocking) const
     mode |= O_NONBLOCK;
   }
   if (fcntl(fd, F_SETFL, mode) == -1) {
+    throwError(errno);
+  }
+}
+
+void ArchNetworkBSD::setCloseOnExecOnSocket(int fd) const
+{
+  assert(fd != -1);
+
+  // mark the socket close-on-exec so that child processes we spawn (e.g. the
+  // wl-clipboard helpers on Wayland) do not inherit it; otherwise an inherited
+  // listen socket keeps the port bound after the server restarts.
+  int flags = fcntl(fd, F_GETFD, 0);
+  if (flags == -1) {
+    throwError(errno);
+  }
+  if (fcntl(fd, F_SETFD, flags | FD_CLOEXEC) == -1) {
     throwError(errno);
   }
 }
