@@ -1,0 +1,79 @@
+From 953fe2c1a5bb4f5ff8e5c956cb5bee2c01e8880b Mon Sep 17 00:00:00 2001
+From: rNoz <rnoz.commits@gmail.com>
+Date: Tue, 30 Jun 2026 21:10:42 +0200
+Subject: [PATCH] arch/unix: set FD_CLOEXEC on sockets
+
+Sockets created by newSocket() and acceptSocket() were not marked
+close-on-exec, so any child process the core forks inherits them. On
+Wayland the clipboard support spawns wl-copy/wl-paste, which then keep
+the inherited listen socket open; after the server is restarted the new
+instance cannot bind because the port is still held ("cannot bind
+address: Address already in use").
+
+Mark sockets FD_CLOEXEC right after creation so spawned helpers don't
+inherit them.
+
+Signed-off-by: rNoz <rnoz.commits@gmail.com>
+---
+ src/lib/arch/unix/ArchNetworkBSD.cpp | 18 ++++++++++++++++++
+ src/lib/arch/unix/ArchNetworkBSD.h   |  1 +
+ 2 files changed, 19 insertions(+)
+
+diff --git a/src/lib/arch/unix/ArchNetworkBSD.cpp b/src/lib/arch/unix/ArchNetworkBSD.cpp
+index 9a724ea18..3cde2b987 100644
+--- a/src/lib/arch/unix/ArchNetworkBSD.cpp
++++ b/src/lib/arch/unix/ArchNetworkBSD.cpp
+@@ -79,6 +79,7 @@ ArchSocket ArchNetworkBSD::newSocket(AddressFamily family, SocketType type)
+   }
+   try {
+     setBlockingOnSocket(fd, false);
++    setCloseOnExecOnSocket(fd);
+ #if defined(__APPLE__)
+     int on = 1;
+     setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &on, sizeof(on));
+@@ -200,6 +201,7 @@ ArchSocket ArchNetworkBSD::acceptSocket(ArchSocket s, ArchNetAddress *addr)
+ 
+   try {
+     setBlockingOnSocket(fd, false);
++    setCloseOnExecOnSocket(fd);
+ #if defined(__APPLE__)
+     int on = 1;
+     setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &on, sizeof(on));
+@@ -399,6 +401,22 @@ void ArchNetworkBSD::setBlockingOnSocket(int fd, bool blocking) const
+   }
+ }
+ 
++void ArchNetworkBSD::setCloseOnExecOnSocket(int fd) const
++{
++  assert(fd != -1);
++
++  // mark the socket close-on-exec so that child processes we spawn (e.g. the
++  // wl-clipboard helpers on Wayland) do not inherit it; otherwise an inherited
++  // listen socket keeps the port bound after the server restarts.
++  int flags = fcntl(fd, F_GETFD, 0);
++  if (flags == -1) {
++    throwError(errno);
++  }
++  if (fcntl(fd, F_SETFD, flags | FD_CLOEXEC) == -1) {
++    throwError(errno);
++  }
++}
++
+ bool ArchNetworkBSD::setNoDelayOnSocket(ArchSocket s, bool noDelay)
+ {
+   assert(s != nullptr);
+diff --git a/src/lib/arch/unix/ArchNetworkBSD.h b/src/lib/arch/unix/ArchNetworkBSD.h
+index 0be55f0aa..3e15da0ef 100644
+--- a/src/lib/arch/unix/ArchNetworkBSD.h
++++ b/src/lib/arch/unix/ArchNetworkBSD.h
+@@ -104,6 +104,7 @@ private:
+   const int *getUnblockPipe();
+   const int *getUnblockPipeForThread(ArchThread);
+   void setBlockingOnSocket(int fd, bool blocking) const;
++  void setCloseOnExecOnSocket(int fd) const;
+   [[noreturn]] void throwError(int) const override;
+   [[noreturn]] void throwNameError(int) const override;
+ 
+-- 
+2.54.0
+

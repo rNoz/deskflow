@@ -1,0 +1,87 @@
+# Local rebuild of the Arch "deskflow" package with the FD_CLOEXEC socket fix.
+# Upstream Arch packaging: https://gitlab.archlinux.org/archlinux/packaging/packages/deskflow
+# Local delta: applies fd-cloexec.patch (see that file + HANDOFF.md) in prepare().
+# Build:   cd packaging/arch && makepkg -si
+# Or yay:  yay -B packaging/arch
+pkgname=deskflow
+pkgver=1.26.0
+pkgrel=2
+pkgdesc='Share one mouse and keyboard between multiple computers'
+url='https://deskflow.org/'
+arch=(x86_64)
+license=('GPL-2.0-only WITH LicenseRef-OpenSSL-Exception')
+depends=(
+  glib2
+  glibc
+  hicolor-icon-theme
+  libei
+  libgcc
+  libglvnd
+  libice
+  libportal
+  libsm
+  libstdc++
+  libx11
+  libxext
+  libxi
+  libxinerama
+  libxkbcommon
+  libxkbcommon-x11
+  libxkbfile
+  libxrandr
+  libxtst
+  openssl
+  qt6-base
+  qt6-declarative
+  qt6-svg
+)
+makedepends=(
+  cmake
+  git
+  gtest
+  ninja
+  python
+  qt6-tools
+  xorgproto
+)
+source=("git+https://github.com/deskflow/deskflow.git#tag=v${pkgver}"
+        "fd-cloexec.patch")
+sha256sums=('1f5a961f90be0d219fde1d4b138bef9052c8f31747e8659703873f706a439e54'
+            'SKIP')
+b2sums=('43f63fafd65b9ea81fc6591613f49f3aaf98168288409d2b1266df6cd4b37cf17435291023376d711a3a94ed6cd51c29e316b109ce7bfcbb005f5ce9e9455bc5'
+        'SKIP')
+
+prepare() {
+  cd "${pkgname}"
+  patch -p1 < "${srcdir}/fd-cloexec.patch"
+}
+
+build() {
+  cd "${pkgname}"
+  cmake \
+    -DCMAKE_INSTALL_PREFIX=/usr \
+    -DCMAKE_BUILD_TYPE=None \
+    -DCMAKE_C_FLAGS="${CFLAGS}" \
+    -DCMAKE_CXX_FLAGS="${CXXFLAGS}" \
+    -DCMAKE_EXE_LINKER_FLAGS="${LDFLAGS}" \
+    -DCMAKE_SHARED_LINKER_FLAGS="${LDFLAGS}" \
+    -Wno-dev \
+    -G Ninja \
+    -B build \
+    -S .
+  cmake --build build --verbose
+}
+
+check() {
+  cd "${pkgname}"
+  export QT_QPA_PLATFORM=offscreen
+  ./build/bin/legacytests
+}
+
+package() {
+  cd "${pkgname}"
+  DESTDIR="${pkgdir}" cmake --install build
+  install -Dm 644 README.md doc/user/configuration.md -t "${pkgdir}/usr/share/doc/${pkgname}"
+}
+
+# vim: ts=2 sw=2 et:
