@@ -628,27 +628,29 @@ void MainWindow::open()
   const auto autoHide = Settings::value(Settings::Gui::Autohide).toBool();
   if (!autoHide)
     showAndActivate();
-  else if (deskflow::platform::isMac())
+#ifdef Q_OS_MACOS
+  else if (deskflow::platform::isMac()) {
     // macOS to call hide after this function ends
-    QTimer::singleShot(1, this, &MainWindow::hide);
+    QTimer::singleShot(1, this, [this] {
+      m_autoHiddenOnStartup = true;
+      hide();
+    });
+  }
+#endif
   else
     hide();
 
 #ifdef Q_OS_MACOS
-  auto ignoreInitialApplicationActivation =
-      autoHide && QGuiApplication::applicationState() != Qt::ApplicationActive;
   connect(
       qApp, &QGuiApplication::applicationStateChanged, this,
-      [this, ignoreInitialApplicationActivation](Qt::ApplicationState state) mutable {
-        if (state != Qt::ApplicationActive)
-          return;
-
-        if (ignoreInitialApplicationActivation) {
-          ignoreInitialApplicationActivation = false;
+      [this](Qt::ApplicationState state) {
+        if (m_autoHiddenOnStartup) {
+          if (state == Qt::ApplicationInactive)
+            m_autoHiddenOnStartup = false;
           return;
         }
 
-        if (!isVisible())
+        if (state == Qt::ApplicationActive && !isVisible())
           showAndActivate();
       }
   );
