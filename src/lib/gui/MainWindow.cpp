@@ -630,9 +630,9 @@ void MainWindow::open()
     showAndActivate();
 #ifdef Q_OS_MACOS
   else if (deskflow::platform::isMac()) {
+    m_autoHiddenOnStartup = true;
     // macOS to call hide after this function ends
     QTimer::singleShot(1, this, [this] {
-      m_autoHiddenOnStartup = true;
       hide();
     });
   }
