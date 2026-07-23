@@ -35,6 +35,7 @@
 #include <QCloseEvent>
 #include <QDesktopServices>
 #include <QFileDialog>
+#include <QGuiApplication>
 #include <QLocalServer>
 #include <QLocalSocket>
 #include <QMenu>
@@ -624,13 +625,34 @@ void MainWindow::serverConnectionConfigureClient(const QString &clientName)
 
 void MainWindow::open()
 {
-  if (!Settings::value(Settings::Gui::Autohide).toBool())
+  const auto autoHide = Settings::value(Settings::Gui::Autohide).toBool();
+  if (!autoHide)
     showAndActivate();
   else if (deskflow::platform::isMac())
     // macOS to call hide after this function ends
     QTimer::singleShot(1, this, &MainWindow::hide);
   else
     hide();
+
+#ifdef Q_OS_MACOS
+  auto ignoreInitialApplicationActivation =
+      autoHide && QGuiApplication::applicationState() != Qt::ApplicationActive;
+  connect(
+      qApp, &QGuiApplication::applicationStateChanged, this,
+      [this, ignoreInitialApplicationActivation](Qt::ApplicationState state) mutable {
+        if (state != Qt::ApplicationActive)
+          return;
+
+        if (ignoreInitialApplicationActivation) {
+          ignoreInitialApplicationActivation = false;
+          return;
+        }
+
+        if (!isVisible())
+          showAndActivate();
+      }
+  );
+#endif
 
   // if a critical error was shown just before the main window (i.e. on app
   // load), it will be hidden behind the main window. therefore we need to raise
