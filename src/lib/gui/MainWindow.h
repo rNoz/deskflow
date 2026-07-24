@@ -172,9 +172,9 @@ private:
   QSet<QString> m_ignoredClients;
   bool m_newClientPromptShowing = false;
   bool m_serverConfigDialogVisible = false;
+  bool m_quitting = false;
 #ifdef Q_OS_MACOS
   bool m_autoHiddenOnStartup = false;
-  bool m_quitting = false;
 #endif
   QSize m_expandedSize = QSize();
   QStringList m_checkedClients;
