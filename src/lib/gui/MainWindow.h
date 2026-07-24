@@ -174,6 +174,7 @@ private:
   bool m_serverConfigDialogVisible = false;
 #ifdef Q_OS_MACOS
   bool m_autoHiddenOnStartup = false;
+  bool m_quitting = false;
 #endif
   QSize m_expandedSize = QSize();
   QStringList m_checkedClients;

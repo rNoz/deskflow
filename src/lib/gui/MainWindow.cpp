@@ -217,6 +217,13 @@ void MainWindow::setupControls()
   ui->lineEditName->setVisible(false);
   ui->lineEditName->installEventFilter(this);
 
+  // Watch the application object so we can distinguish a genuine application
+  // quit (macOS Dock "Quit", Cmd-Q terminate, Apple Event quit, logout) from a
+  // plain window close. Without this, an OS-initiated quit arrives as a
+  // spontaneous close event and close-to-tray would hide the window and cancel
+  // the termination, making the app impossible to quit normally.
+  qApp->installEventFilter(this);
+
   if (deskflow::platform::isMac()) {
     ui->rbModeServer->setAttribute(Qt::WA_MacShowFocusRect, false);
     ui->rbModeClient->setAttribute(Qt::WA_MacShowFocusRect, false);
@@ -916,7 +923,7 @@ void MainWindow::handlePeerFingerprint(const QString &fingerprint)
 
 void MainWindow::closeEvent(QCloseEvent *event)
 {
-  if (Settings::value(Settings::Gui::CloseToTray).toBool() && event->spontaneous()) {
+  if (!m_quitting && Settings::value(Settings::Gui::CloseToTray).toBool() && event->spontaneous()) {
     if (Settings::value(Settings::Gui::CloseReminder).toBool()) {
       messages::showCloseReminder(this);
       Settings::setValue(Settings::Gui::CloseReminder, false);
@@ -1028,6 +1035,11 @@ void MainWindow::hide()
 {
 #ifdef Q_OS_MACOS
   macOSNativeHide();
+  // macOSNativeHide() only performs the native NSApp hide; without also updating
+  // Qt's own visibility state, isVisible() stays true and the reopen handler
+  // (which fires showAndActivate only when !isVisible()) never restores the
+  // window. Keep Qt's state in sync so reopening from the tray/Dock works.
+  QMainWindow::hide();
 #else
   QMainWindow::hide();
 #endif
@@ -1054,6 +1066,14 @@ void MainWindow::changeEvent(QEvent *e)
 
 bool MainWindow::eventFilter(QObject *obj, QEvent *event)
 {
+  // A QEvent::Quit on the application object means the OS/user asked the whole
+  // application to terminate (Dock "Quit", Cmd-Q, Apple Event, logout). Record
+  // that so closeEvent performs a real quit instead of hiding to the tray.
+  if (obj == qApp && event->type() == QEvent::Quit) {
+    m_quitting = true;
+    return false;
+  }
+
   if (obj != ui->lineEditName || event->type() != QEvent::KeyPress)
     return false;
   if (const auto keyEvent = static_cast<QKeyEvent *>(event); keyEvent->key() != Qt::Key_Escape)
